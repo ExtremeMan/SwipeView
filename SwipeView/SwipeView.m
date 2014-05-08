@@ -1197,4 +1197,73 @@
     [_delegate swipeViewDidEndDecelerating:self];
 }
 
+#pragma mark -
+#pragma makr Remove methods
+
+- (void)removeItemAtIndex:(NSUInteger)removeIndex
+{
+  NSMutableArray *indexes = [[self indexesForVisibleItems] mutableCopy];
+  NSUInteger lastIndex = [[indexes lastObject] integerValue];
+  NSUInteger firstIndex = [[indexes firstObject] integerValue];
+  UIView *addedView = nil;
+  NSUInteger addedIndex = NSUIntegerMax;
+  if (_numberOfItems > lastIndex + 1) {
+    addedIndex = lastIndex + 1;
+  } else if (firstIndex > 0) {
+    addedIndex = firstIndex - 1;
+  }
+  if (addedIndex != NSUIntegerMax) {
+    addedView = [self loadViewAtIndex:addedIndex];
+    [indexes addObject:@(addedIndex)];
+  }
+
+  UIView *removedView = _itemViews[@(removeIndex)];
+  [_itemViews setObject:[[UIView alloc] initWithFrame:removedView.frame] forKey:@(removeIndex)];
+  [removedView removeFromSuperview];
+  __block CGRect removedFrame = [_scrollView convertRect:removedView.frame toView:_scrollView.superview.superview];
+  removedView.frame = removedFrame;
+  [_scrollView.superview.superview addSubview:removedView];
+
+  [UIView animateWithDuration:0.5 animations:^{
+    removedFrame.origin.y = _scrollView.superview.superview.bounds.size.height;
+    removedView.frame = removedFrame;
+  } completion:^(BOOL finished) {
+    [removedView removeFromSuperview];
+
+    _numberOfItems--;
+    if (addedIndex != NSUIntegerMax) {
+      [self setItemView:addedView forIndex:addedIndex];
+      [self setFrameForView:addedView atIndex:addedIndex];
+      [_scrollView addSubview:addedView];
+    }
+    if (removeIndex == _numberOfItems) {
+      [_itemViews removeObjectForKey:@(removeIndex)];
+      CGPoint contentOffset = _scrollView.contentOffset;
+      contentOffset.x -= removedView.bounds.size.width;
+      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        _scrollView.contentSize = CGSizeMake(_scrollView.contentSize.width - removedView.bounds.size.width, _scrollView.contentSize.height);
+      });
+      [_scrollView setContentOffset:contentOffset animated:YES];
+    } else {
+      [UIView animateWithDuration:0.5 animations:^{
+        for (NSNumber *visibleIndex in indexes) {
+          if ([visibleIndex unsignedIntegerValue] <= removeIndex) {
+            continue;
+          }
+
+          NSUInteger movedIndex = [visibleIndex unsignedIntegerValue];
+          UIView *movedView = _itemViews[@(movedIndex)];
+          _itemViews[@(movedIndex - 1)] = movedView;
+          [_itemViews removeObjectForKey:@(movedIndex)];
+
+          double x = [self offsetForItemAtIndex:movedIndex - 1] * _itemSize.width + _scrollView.contentOffset.x;
+          CGRect frame = movedView.frame;
+          frame.origin.x = x;
+          movedView.frame = frame;
+        }
+      }];
+    }
+  }];
+}
+
 @end
